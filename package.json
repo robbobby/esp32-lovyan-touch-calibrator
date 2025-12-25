@@ -1,0 +1,11 @@
+{
+  "name": "calibration_script",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "https://github.com/robbobby/esp32-lovyan-touch-calibrator.git",
+  "author": "rob <robert.hollingworth@vcreate.tv>",
+  "license": "MIT",
+  "scripts": {
+    "calibrate": "pio run --target upload"
+  }
+}

@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include <LovyanGFX.hpp>
 #include <lvgl.h>
-#include "LGFX_ILI9488.h"
-#include "screen_config_3.5_ILI9488.h"
+#include "LGFX_ST7796S.h"
+#include "screen_config_4.0_ST7796S.h"
 
 // LVGL buffer (1/10 of screen size for partial rendering)
 static lv_color_t buf1[LVGL_BUFFER_SIZE];
@@ -59,6 +59,32 @@ static int button_press_count[BUTTON_COUNT] = {0};
 static bool calibration_done = false;
 static uint16_t cal_values[8] = {0};
 static lv_obj_t *cal_label = nullptr;
+static const int CALIBRATION_RUNS = 4;
+static const uint16_t CAL_LOW_THRESHOLD = 2000;
+
+static void pick_best_calibration(const uint16_t samples[CALIBRATION_RUNS][8], uint16_t out[8])
+{
+  for (int i = 0; i < 8; i++) {
+    uint16_t min_v = samples[0][i];
+    uint16_t max_v = samples[0][i];
+    for (int r = 1; r < CALIBRATION_RUNS; r++) {
+      if (samples[r][i] < min_v) min_v = samples[r][i];
+      if (samples[r][i] > max_v) max_v = samples[r][i];
+    }
+    // Low values (near 0) -> take lowest, high values (near max) -> take highest.
+    out[i] = (max_v < CAL_LOW_THRESHOLD) ? min_v : max_v;
+  }
+}
+
+static void print_calibration_values(const uint16_t values[8])
+{
+  Serial.print("Touch calibration values: {");
+  for (int i = 0; i < 8; i++) {
+    Serial.print(values[i]);
+    if (i < 7) Serial.print(", ");
+  }
+  Serial.println("}");
+}
 
 // Toggle calibration values display on screen
 void toggle_calibration_values()
@@ -163,16 +189,24 @@ void run_calibration(bool lvgl_initialized = false)
     return;
   }
   
-  display.fillScreen(TFT_BLACK);
-  display.setTextColor(TFT_WHITE, TFT_BLACK);
-  display.setTextSize(2);
-  display.setCursor(10, 10);
-  display.println("Touch Calibration");
-  display.println("Touch the corners");
-  
-  display.calibrateTouch(cal_values, TFT_WHITE, TFT_BLACK, 10);
+  uint16_t cal_samples[CALIBRATION_RUNS][8] = {0};
+  for (int run = 0; run < CALIBRATION_RUNS; run++) {
+    display.fillScreen(TFT_BLACK);
+    display.setTextColor(TFT_WHITE, TFT_BLACK);
+    display.setTextSize(2);
+    display.setCursor(10, 10);
+    display.println("Touch Calibration");
+    display.println("Touch the corners");
+    display.print("Run ");
+    display.print(run + 1);
+    display.print("/");
+    display.println(CALIBRATION_RUNS);
+    display.calibrateTouch(cal_samples[run], TFT_WHITE, TFT_BLACK, 10);
+  }
+  pick_best_calibration(cal_samples, cal_values);
   display.setTouchCalibrate(cal_values);
   calibration_done = true;
+  print_calibration_values(cal_values);
   
   if (lvgl_initialized) {
     lv_obj_invalidate(lv_screen_active());
@@ -230,6 +264,12 @@ void button_event_handler(lv_event_t * e)
 
 void setup()
 {
+  Serial.begin(115200);
+  // Ensure touch CS is high (inactive) before display init to prevent interference
+  pinMode(TOUCH_CS, OUTPUT);
+  digitalWrite(TOUCH_CS, HIGH);
+  delay(10);
+  
   display.init();
   display.setBrightness(255);
 
@@ -256,15 +296,7 @@ void setup()
     if (has_valid_cal) {
       run_calibration(false);
     } else {
-      display.fillScreen(TFT_BLACK);
-      display.setTextColor(TFT_WHITE, TFT_BLACK);
-      display.setTextSize(2);
-      display.setCursor(10, 10);
-      display.println("Touch Calibration");
-      display.println("Touch the corners");
-      display.calibrateTouch(cal_values, TFT_WHITE, TFT_BLACK, 10);
-      display.setTouchCalibrate(cal_values);
-      calibration_done = true;
+      run_calibration(false);
     }
   }
 
@@ -322,4 +354,3 @@ void loop()
   lv_timer_handler();
   delay(5);
 }
-

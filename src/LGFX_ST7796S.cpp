@@ -1,4 +1,4 @@
-#include "LGFX_ILI9488.h"
+#include "LGFX_ST7796S.h"
 
 LGFX display;   // instantiate it
 
